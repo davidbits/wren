@@ -1,0 +1,56 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["durable", "session", "learnings"],
+  "properties": {
+    "durable": {
+      "type": "boolean",
+      "description": "True only if the session produced something worth remembering. If false, session must be null and learnings empty."
+    },
+    "session": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["objective", "files_touched", "commands", "outcome", "tags"],
+      "description": "Audit note for the session, or null if nothing durable.",
+      "properties": {
+        "objective": { "type": "string", "description": "What the user was trying to accomplish." },
+        "files_touched": { "type": "array", "items": { "type": "string" } },
+        "commands": { "type": "array", "items": { "type": "string" }, "description": "Notable shell commands run." },
+        "outcome": { "type": "string", "description": "What actually happened / final state." },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "learnings": {
+      "type": "array",
+      "description": "Zero or more atomic, durable learnings. Empty if nothing durable.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "scope", "title", "text", "why", "how_to_apply", "tags", "supersedes"],
+        "properties": {
+          "id": {
+            "type": ["string", "null"],
+            "description": "Echo the id of an EXISTING learning to UPDATE it in place. Null for a new learning."
+          },
+          "type": {
+            "type": "string",
+            "enum": ["learning", "preference", "decision", "failure"]
+          },
+          "scope": {
+            "type": "string",
+            "description": "The project path provided, or the literal 'global' for cross-project facts (user prefs, tool quirks)."
+          },
+          "title": { "type": "string", "description": "Short imperative title, <= 80 chars." },
+          "text": { "type": "string", "description": "The durable fact, stated concisely." },
+          "why": { "type": "string", "description": "When/why it matters." },
+          "how_to_apply": { "type": "string", "description": "Concrete, actionable guidance." },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "supersedes": {
+            "type": ["string", "null"],
+            "description": "id of an existing learning this REPLACES (contradicts/obsoletes). Null otherwise."
+          }
+        }
+      }
+    }
+  }
+}

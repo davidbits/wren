@@ -1,0 +1,5 @@
+# Local agent/index state
+.code-review-graph/**
+
+# Dependencies
+node_modules/**

@@ -1,0 +1,28 @@
+# Added by code-review-graph
+.code-review-graph/
+
+# Claude Code local (personal) settings
+.claude/settings.local.json
+
+# Local MCP server config (machine-specific absolute paths)
+.mcp.json
+
+# Dependencies
+node_modules/
+
+# Secrets / env (this project handles credentials — never commit env files)
+.env
+.env.*
+
+# TypeScript / tooling
+*.tsbuildinfo
+coverage/
+
+# Compiled standalone binaries
+dist/
+
+# OS junk
+.DS_Store
+
+# Other
+DESIGN.md

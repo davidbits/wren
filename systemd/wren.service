@@ -1,0 +1,17 @@
+[Unit]
+# Reference template. `wren install` writes the real unit to
+# ~/.config/systemd/user/wren.service with absolute paths filled in.
+# Replace <BUN> with the absolute path to the bun binary and <REPO> with this
+# repository's absolute path if installing by hand.
+Description=wren worker — drains the memory extraction queue
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=<BUN> run <REPO>/src/cli.ts worker
+Restart=on-failure
+RestartSec=5
+Environment=WREN_LOG_LEVEL=info
+
+[Install]
+WantedBy=default.target
