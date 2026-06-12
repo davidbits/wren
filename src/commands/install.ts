@@ -33,6 +33,10 @@ vault_path = "${cfg.vaultPath}"
 # Optional: path to the codex binary.
 # codex_bin = "codex"
 
+# Codex home wren reads transcripts from (default: $CODEX_HOME or ~/.codex).
+# Run \`wren codex-home\` to detect and pick one interactively.
+# codex_home = "~/.codex"
+
 # Max memories injected at SessionStart (keeps context cheap).
 max_inject = ${cfg.maxInject}
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Config } from "../src/config.ts";
 
@@ -14,6 +14,7 @@ export function makeTmpConfig(): Config {
     queueDir: join(dataDir, "queue"),
     indexDbPath: join(dataDir, "index.db"),
     codexBin: "codex",
+    codexHome: process.env.CODEX_HOME ?? join(homedir(), ".codex"),
     extractorModel: undefined,
     maxInject: 15,
     settleMs: 180_000,

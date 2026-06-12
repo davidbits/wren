@@ -136,6 +136,7 @@ never captures a project you've turned off.
 | `mcp` | Run the stdio MCP server |
 | `rebuild` | Rebuild the search index from the vault |
 | `consolidate [--dry-run]` | Prune/supersede near-duplicate learnings |
+| `codex-home` | Detect codex homes on the machine; pick which one wren extracts transcripts from |
 | `status` | Show config, projects, queue, index |
 | `extract <file> [--agent A] [--cwd P] [--scope S]` | Manually extract one transcript (testing/backfill) |
 
@@ -147,8 +148,15 @@ never captures a project you've turned off.
 vault_path = "/home/you/.local/share/wren/vault"
 # extractor_model = "gpt-5-codex-mini"   # optional -m for codex exec; omit for default
 # codex_bin = "codex"
+# codex_home = "~/.codex"                 # which codex home to read transcripts from;
+                                          # run `wren codex-home` to detect + pick one
 max_inject = 15                          # cap on memories injected at SessionStart
 ```
+
+> A machine can have more than one codex home (a relocated `$CODEX_HOME`, a
+> leftover `~/.codex-old`, ...). `wren codex-home` lists the ones it finds with
+> session counts and persists your choice as `codex_home`. Defaults to
+> `$CODEX_HOME` or `~/.codex`.
 
 Environment overrides: `WREN_CONFIG_DIR`, `WREN_DATA_DIR`,
 `WREN_FAKE_EXTRACTOR` (offline heuristic extractor, no LLM — useful for

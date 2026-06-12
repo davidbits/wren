@@ -13,20 +13,22 @@ import { join, resolve } from "node:path";
 import type { NormalizedTranscript, NormalizedTurn, ToolCall } from "../types.ts";
 import { readLines } from "./lines.ts";
 
-function codexSessionsDir(): string {
-  return join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions");
+function codexSessionsDir(home?: string): string {
+  return join(home ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), "sessions");
 }
 
 /**
  * Fallback used only when a Codex `Stop` payload carries a null `transcript_path`
  * (the documented field is normally present). Discovers the newest rollout whose
  * `session_meta.cwd` matches the project. The scan is bounded to recent files by
- * mtime.
+ * mtime. `home` is the configured codex home (`cfg.codexHome`); omit to use
+ * `$CODEX_HOME`/`~/.codex`.
  */
 export async function findLatestCodexRollout(
   cwd: string,
+  home?: string,
 ): Promise<{ path: string; sessionId: string } | null> {
-  const root = codexSessionsDir();
+  const root = codexSessionsDir(home);
   const glob = new Bun.Glob("**/rollout-*.jsonl");
   const files: Array<{ path: string; mtime: number }> = [];
   try {

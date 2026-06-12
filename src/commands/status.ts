@@ -19,6 +19,7 @@ export async function status(cfg: Config): Promise<void> {
   console.log("wren status\n");
   console.log(`vault:        ${cfg.vaultPath}`);
   console.log(`data:         ${cfg.dataDir}`);
+  console.log(`codex home:   ${cfg.codexHome}`);
   console.log(
     `extractor:    ${cfg.fakeExtractor ? "FAKE (offline)" : `codex (${cfg.extractorModel ?? "default model"})`}`,
   );

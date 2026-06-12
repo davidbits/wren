@@ -49,7 +49,7 @@ export async function runCodexCapture(): Promise<void> {
   if (!transcriptPath) {
     // Documented field was null/absent — last-resort discovery by cwd.
     log.warn("stop payload had no transcript_path; discovering rollout by cwd", { cwd });
-    const found = await findLatestCodexRollout(cwd);
+    const found = await findLatestCodexRollout(cwd, cfg.codexHome);
     if (!found) {
       log.warn("no codex rollout found for cwd; no-op", { cwd });
       return;

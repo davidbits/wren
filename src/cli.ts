@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { hashTranscript, parseTranscript } from "./adapters/index.ts";
+import { runCodexHome } from "./commands/codex-home.ts";
 import { consolidate } from "./commands/consolidate.ts";
 import { disableProject, enableProject } from "./commands/enable.ts";
 import { install } from "./commands/install.ts";
@@ -46,6 +47,7 @@ Commands:
   mcp                             Run the stdio MCP server
   rebuild                         Rebuild the search index from the vault
   consolidate [--dry-run]         Prune/supersede near-duplicate learnings
+  codex-home                      Detect codex homes; pick which one to extract from
   status                          Show config, projects, queue, index
   extract <file> [--agent A] [--cwd P] [--scope S]
                                   Manually extract one transcript
@@ -187,6 +189,9 @@ async function main(): Promise<void> {
       );
       break;
     }
+    case "codex-home":
+      await runCodexHome(cfg);
+      break;
     case "status":
       await status(cfg);
       break;

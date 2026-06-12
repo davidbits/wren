@@ -26,6 +26,12 @@ export interface Config {
   indexDbPath: string;
   /** Path to the Codex binary used by the extractor (D6). */
   codexBin: string;
+  /**
+   * Codex home — the directory whose `sessions/` tree wren reads transcripts
+   * from. Defaults to `$CODEX_HOME` or `~/.codex`; a machine can have several,
+   * so `wren codex-home` detects them and persists the chosen one here.
+   */
+  codexHome: string;
   /** Optional `-m` model override for `codex exec`. */
   extractorModel?: string;
   /** Hard cap on memories injected at SessionStart (keeps context cheap). */
@@ -63,9 +69,22 @@ interface RawConfig {
   vault_path?: string;
   data_dir?: string;
   codex_bin?: string;
+  codex_home?: string;
   extractor_model?: string;
   max_inject?: number;
   settle_ms?: number;
+}
+
+/** Expand a leading `~` to the home dir (TOML can't, so config_home may use it). */
+function expandTilde(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/")) return join(homedir(), p.slice(2));
+  return p;
+}
+
+/** Default codex home when config doesn't pin one: `$CODEX_HOME` or `~/.codex`. */
+export function defaultCodexHome(): string {
+  return process.env.CODEX_HOME ?? join(homedir(), ".codex");
 }
 
 async function readToml<T>(path: string): Promise<T | undefined> {
@@ -85,6 +104,7 @@ export async function loadConfig(): Promise<Config> {
     queueDir: join(data, "queue"),
     indexDbPath: join(data, "index.db"),
     codexBin: raw.codex_bin ?? process.env.WREN_CODEX_BIN ?? "codex",
+    codexHome: raw.codex_home ? resolve(expandTilde(raw.codex_home)) : defaultCodexHome(),
     extractorModel: raw.extractor_model ?? process.env.WREN_EXTRACTOR_MODEL,
     maxInject: raw.max_inject ?? 15,
     settleMs: raw.settle_ms ?? Number(process.env.WREN_SETTLE_MS ?? 180_000),
@@ -96,6 +116,26 @@ export async function loadConfig(): Promise<Config> {
 
 export function projectsPath(cfg: Config): string {
   return join(cfg.configDir, "projects.toml");
+}
+
+/**
+ * Persist `codex_home` into `config.toml`, preserving the rest of the file
+ * (comments included — we patch the raw text rather than re-stringify). Replaces
+ * an existing `codex_home` (or its commented placeholder) line, else appends.
+ * Creates the file + dir if absent. Returns the file path.
+ */
+export async function saveCodexHome(cfg: Config, home: string): Promise<string> {
+  const path = join(cfg.configDir, "config.toml");
+  await mkdir(cfg.configDir, { recursive: true });
+  const file = Bun.file(path);
+  const existing = (await file.exists()) ? await file.text() : "";
+  const line = `codex_home = ${JSON.stringify(home)}`;
+  const re = /^#?\s*codex_home\s*=.*$/m;
+  const next = re.test(existing)
+    ? existing.replace(re, line)
+    : `${existing.trimEnd()}${existing.trim() ? "\n" : ""}${line}\n`;
+  await Bun.write(path, next);
+  return path;
 }
 
 export async function loadProjects(cfg: Config): Promise<ProjectRegistry> {
