@@ -79,7 +79,7 @@ Then do the one-time, agent-agnostic setup (config + vault dirs, MCP
 registration, systemd user unit) and start the worker:
 
 ```bash
-wren install           # add --codex to also wire Codex, --systemd to start the daemon now
+wren install           # add --codex to also wire Codex MCP + SessionStart, --systemd to start the daemon now
 
 # Start the worker daemon (drains the queue, runs the extractor)
 systemctl --user enable --now wren.service
@@ -110,7 +110,7 @@ native per-project config:
 
 ```bash
 wren enable /path/to/project            # Claude hooks + registry
-wren enable /path/to/project --codex    # also wire Codex (Stop hook → <project>/.codex/hooks.json; trust → ~/.codex/config.toml)
+wren enable /path/to/project --codex    # also wire Codex (Stop/SessionStart hooks → <project>/.codex/hooks.json; trust → ~/.codex/config.toml)
 wren disable /path/to/project
 ```
 
@@ -123,7 +123,11 @@ never captures a project you've turned off.
 > `autoMemoryEnabled: false` in the project's Claude settings (per-project);
 > `wren install --codex` sets `[features] memories = false` in the Codex home —
 > home-wide, since Codex memory lives in `CODEX_HOME/memories/`, not per-project,
-> so it covers every project under that home.
+> so it covers every project under that home. It also writes a Codex
+> `SessionStart` hook into `CODEX_HOME/hooks.json` that reminds Codex to load
+> Wren memories from the MCP server. `wren enable --codex` writes the same
+> `SessionStart` reminder into the project-local `.codex/hooks.json` alongside
+> Wren's capture hook.
 
 ## Commands
 

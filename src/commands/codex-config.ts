@@ -6,6 +6,10 @@
  *   - Stop hook  → `<project>/.codex/hooks.json`     (project-local layer)
  *   - project trust → `~/.codex/config.toml [projects."<path>"]`
  *
+ * Install-time Codex setup is **home-wide**:
+ *   - MCP server + native memory off → `~/.codex/config.toml`
+ *   - SessionStart memory reminder   → `~/.codex/hooks.json`
+ *
  * Hooks go in `hooks.json`, not `config.toml`: Codex loads a layer's hooks from
  * *either* file, and having them in both for one layer triggers a "prefer a
  * single representation for this layer" warning. `hooks.json` is the canonical
@@ -33,12 +37,15 @@ import { logger } from "../util/log.ts";
 import { CODEX_CAPTURE, selfCommand, selfCommandString } from "./integration.ts";
 
 const log = logger("codex-config");
+const SESSION_START_MATCHER = "startup|resume";
+const MEMORY_REMINDER = "echo 'Use wren mcp server to retrieve memories and learnings from Vault.'";
 
 /** Documented Codex hook handler — `command` is a single shell string. */
 interface CommandHandler {
   type: "command";
   command: string;
   timeout?: number;
+  statusMessage?: string;
 }
 interface HookGroup {
   matcher?: string;
@@ -61,6 +68,9 @@ interface CodexConfigToml {
 function globalConfigPath(): string {
   return join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "config.toml");
 }
+function globalHooksJsonPath(): string {
+  return join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "hooks.json");
+}
 function projectConfigTomlPath(projectPath: string): string {
   return join(projectPath, ".codex", "config.toml");
 }
@@ -71,6 +81,35 @@ function projectHooksJsonPath(projectPath: string): string {
 /** Single shell-string form of our capture invocation, as Codex hooks expect. */
 function captureCommand(): string {
   return selfCommandString("hook", CODEX_CAPTURE);
+}
+
+function memoryReminderCommand(): CommandHandler {
+  return {
+    type: "command",
+    command: MEMORY_REMINDER,
+    timeout: 5,
+    statusMessage: "Loading wren memory",
+  };
+}
+
+function addSessionStartMemoryHook(file: CodexHooksFile): boolean {
+  file.hooks ??= {};
+  file.hooks.SessionStart ??= [];
+  const present = file.hooks.SessionStart.some((g) =>
+    g.hooks?.some((h) => h.command === MEMORY_REMINDER),
+  );
+  if (present) return false;
+
+  const startupGroup = file.hooks.SessionStart.find((g) => g.matcher === SESSION_START_MATCHER);
+  if (startupGroup) {
+    startupGroup.hooks.push(memoryReminderCommand());
+  } else {
+    file.hooks.SessionStart.push({
+      matcher: SESSION_START_MATCHER,
+      hooks: [memoryReminderCommand()],
+    });
+  }
+  return true;
 }
 
 async function readToml<T>(path: string): Promise<T> {
@@ -117,11 +156,19 @@ export async function writeCodexConfig(projectPath: string): Promise<string[]> {
   const file = await readJson<CodexHooksFile>(hooksPath);
   file.hooks ??= {};
   file.hooks.Stop ??= [];
+  let hooksChanged = false;
   const present = file.hooks.Stop.some((g) => g.hooks?.some((h) => h.command === cmd));
   if (!present) {
     file.hooks.Stop.push({ hooks: [{ type: "command", command: cmd, timeout: 30 }] });
-    await writeBackedUp(hooksPath, `${JSON.stringify(file, null, 2)}\n`);
+    hooksChanged = true;
     changes.push("Stop hook (hooks.json)");
+  }
+  if (addSessionStartMemoryHook(file)) {
+    hooksChanged = true;
+    changes.push("SessionStart hook (hooks.json)");
+  }
+  if (hooksChanged) {
+    await writeBackedUp(hooksPath, `${JSON.stringify(file, null, 2)}\n`);
   }
 
   // 3. Migrate: drop our Stop hook from the project config.toml if an older
@@ -164,7 +211,9 @@ async function removeStopFromConfigToml(path: string, cmd: string): Promise<bool
  * We disable native memory because the vault is the single source of truth (D4):
  * leaving Codex's own summarizer on means a second, diverging memory store plus
  * a duplicate per-session extraction cost. User-authored `AGENTS.md` is a
- * separate mechanism and is untouched.
+ * separate mechanism and is untouched. We also add a SessionStart hook that
+ * reminds Codex to use the Wren MCP server, so installed systems load vault
+ * memories automatically at session start.
  */
 export async function writeCodexMcp(): Promise<string[]> {
   const path = globalConfigPath();
@@ -183,5 +232,18 @@ export async function writeCodexMcp(): Promise<string[]> {
   }
 
   await writeBackedUp(path, stringify(cfg as Record<string, unknown>));
+
+  if (await writeGlobalSessionStartHook()) {
+    changes.push("SessionStart hook (global hooks.json)");
+  }
+
   return changes;
+}
+
+async function writeGlobalSessionStartHook(): Promise<boolean> {
+  const path = globalHooksJsonPath();
+  const file = await readJson<CodexHooksFile>(path);
+  if (!addSessionStartMemoryHook(file)) return false;
+  await writeBackedUp(path, `${JSON.stringify(file, null, 2)}\n`);
+  return true;
 }
