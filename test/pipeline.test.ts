@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { basename } from "node:path";
 import type { Config } from "../src/config.ts";
 import { fakeExtract } from "../src/extractor/run.ts";
 import type { ExtractionResult, NormalizedTranscript } from "../src/types.ts";
@@ -173,6 +174,33 @@ describe("vault write pipeline", () => {
     expect(revisionNote?.frontmatter.created).toBe(firstNote?.frontmatter.created);
     expect(revisionNote?.body).toContain("Revised outcome");
     expect(index.count()).toBe(2);
+  });
+
+  it("preserves prior active learning links across session revisions", async () => {
+    const sessionId = "01a01e25-0b9c-72d2-842f-daeb58da6c6d";
+    const first = await writeExtraction(cfg, index, {
+      result: baseResult(),
+      agent: "codex",
+      sessionId,
+      scope: SCOPE,
+      nowIso: "2026-06-10T12:00:00.000Z",
+    });
+
+    const revisionResult = baseResult();
+    revisionResult.learnings[0]!.title = "Keep completed queue jobs immutable";
+    const revision = await writeExtraction(cfg, index, {
+      result: revisionResult,
+      agent: "codex",
+      sessionId,
+      scope: SCOPE,
+      nowIso: "2026-06-11T12:00:00.000Z",
+    });
+
+    const session = await readNote(revision.sessionNotePath!);
+    const firstStem = basename(first.learningPaths[0]!, ".md");
+    const revisionStem = basename(revision.learningPaths[0]!, ".md");
+    expect(session?.body).toContain(`[[${firstStem}]]`);
+    expect(session?.body).toContain(`[[${revisionStem}]]`);
   });
 
   it("fakeExtract gates trivial transcripts", () => {

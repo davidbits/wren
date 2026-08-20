@@ -87,6 +87,15 @@ export async function writeExtraction(
   }
 
   if (hasSession && result.session) {
+    const cumulativeLearningStems = new Set(
+      [...existing.values()]
+        .filter(
+          (note) =>
+            note.frontmatter.source_session === sessionId && !note.frontmatter.superseded_by,
+        )
+        .map((note) => stem(note.path)),
+    );
+    for (const learningStem of learningStems) cumulativeLearningStems.add(learningStem);
     await writeSessionNote(cfg, index, {
       session: result.session,
       agent,
@@ -94,7 +103,7 @@ export async function writeExtraction(
       scope,
       nowIso,
       path: sessionPath,
-      learningStems,
+      learningStems: [...cumulativeLearningStems].sort(),
       extractor: result.extractor,
     });
   }
