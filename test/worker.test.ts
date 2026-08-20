@@ -119,8 +119,11 @@ describe("worker settle window", () => {
     const path = await writeTranscript("revision.jsonl", codexRollout(project), 120_000);
     await enqueue(cfg, job("codex", path, "sess-revision"));
     expect((await runOnce(cfg)).done).toBe(1);
+    const firstDone = await Bun.file(join(cfg.queueDir, "done", "sess-revision.json")).json();
 
     await writeFile(path, `${codexRollout(project)}\n`);
+    const revisionTime = new Date(firstDone.doneAt);
+    await utimes(path, revisionTime, revisionTime);
     await enqueue(cfg, job("codex", path, "sess-revision"));
     const stats = await runOnce(cfg);
 
