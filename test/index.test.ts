@@ -59,6 +59,17 @@ describe("MemoryIndex", () => {
     expect(index.get("1")?.title).toBe("v2");
   });
 
+  it("upsert replaces a prior id at the same vault path", () => {
+    const first = note("1", "/p", "v1", "first version");
+    const second = note("2", "/p", "v2", "second version");
+    second.path = first.path;
+    index.upsertNote(first);
+    index.upsertNote(second);
+    expect(index.count()).toBe(1);
+    expect(index.get("1")).toBeNull();
+    expect(index.get("2")?.title).toBe("v2");
+  });
+
   it("recent falls back when query has no usable tokens", () => {
     index.upsertNote(note("1", "/p", "title", "body"));
     expect(toMatchExpr("()")).toBe("");

@@ -58,9 +58,9 @@ export class MemoryIndex {
     };
   }
 
-  /** Insert or replace a row (FTS5 has no upsert, so delete-then-insert by id). */
+  /** Insert or replace a row. Identity and path are both unique in the vault. */
   upsert(row: IndexRow): void {
-    this.remove(row.id);
+    this.db.query("DELETE FROM memories_fts WHERE id = ? OR path = ?").run(row.id, row.path);
     this.db
       .query(
         `INSERT INTO memories_fts

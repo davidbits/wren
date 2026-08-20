@@ -17,10 +17,10 @@ import type {
   MemoryFrontmatter,
   MemoryNote,
 } from "../types.ts";
-import { dateStamp, slugify, ulid } from "../util/ids.ts";
+import { dateStamp, shortHash, slugify, ulid } from "../util/ids.ts";
 import { scrub } from "../util/secrets.ts";
 import type { MemoryIndex } from "./index.ts";
-import { serializeNote } from "./note.ts";
+import { readNote, serializeNote } from "./note.ts";
 import { learningsDir, sessionsDir } from "./paths.ts";
 import { readLearnings } from "./store.ts";
 
@@ -64,8 +64,7 @@ export async function writeExtraction(
 
   // Pre-generate the session note identity so learnings can link to it.
   const hasSession = !!result.session;
-  const sessionId6 = sessionId.slice(0, 6) || "nosess";
-  const sessionStem = `session-${dateStamp(nowIso)}-${sessionId6}`;
+  const sessionStem = `session-${shortHash(sessionId || "nosess", 16)}`;
   const sessionPath = join(sessionsDir(cfg, scope), `${sessionStem}.md`);
 
   const learningPaths: string[] = [];
@@ -179,14 +178,19 @@ async function writeSessionNote(
   const { session, agent, sessionId, scope, nowIso, path, learningStems } = args;
   await mkdir(sessionsDir(cfg, scope), { recursive: true });
 
-  const id = ulid();
-  const title = `Session ${dateStamp(nowIso)} — ${slugify(session.objective, 40)}`;
+  const previous = await readNote(path);
+  if (previous && previous.frontmatter.source_session !== sessionId) {
+    throw new Error(`session path collision at ${path}`);
+  }
+  const id = previous?.frontmatter.id ?? ulid();
+  const created = previous?.frontmatter.created ?? nowIso;
+  const title = `Session ${dateStamp(created)} — ${slugify(session.objective, 40)}`;
   const frontmatter: MemoryFrontmatter = {
     id,
     type: "session",
     scope,
     agent,
-    created: nowIso,
+    created,
     source_session: sessionId,
     title: scrub(title),
     tags: session.tags ?? [],

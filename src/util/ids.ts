@@ -29,11 +29,11 @@ export function scopeSlug(scope: string): string {
   return `${base}-${hash}`;
 }
 
-/** Short deterministic hash (8 hex chars) of a string. */
-export function shortHash(input: string): string {
+/** Short deterministic hash of a string. */
+export function shortHash(input: string, length = 8): string {
   const h = new Bun.CryptoHasher("sha256");
   h.update(input);
-  return h.digest("hex").slice(0, 8);
+  return h.digest("hex").slice(0, length);
 }
 
 /** `YYYY-MM-DD` in local time, for human-friendly session filenames. */

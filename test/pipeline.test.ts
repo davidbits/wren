@@ -119,6 +119,48 @@ describe("vault write pipeline", () => {
     expect(hits[0]?.title).toContain("Prefer rename");
   });
 
+  it("uses collision-safe paths and preserves session identity on revision", async () => {
+    const firstResult = baseResult();
+    firstResult.learnings = [];
+    const first = await writeExtraction(cfg, index, {
+      result: firstResult,
+      agent: "codex",
+      sessionId: "01a01e25-0b9c-72d2-842f-daeb58da6c6d",
+      scope: SCOPE,
+      nowIso: "2026-06-10T12:00:00.000Z",
+    });
+    const firstNote = await readNote(first.sessionNotePath!);
+
+    const revisionResult = baseResult();
+    revisionResult.learnings = [];
+    revisionResult.session!.outcome = "Revised outcome";
+    const revision = await writeExtraction(cfg, index, {
+      result: revisionResult,
+      agent: "codex",
+      sessionId: "01a01e25-0b9c-72d2-842f-daeb58da6c6d",
+      scope: SCOPE,
+      nowIso: "2026-06-11T12:00:00.000Z",
+    });
+    const revisionNote = await readNote(revision.sessionNotePath!);
+
+    const siblingResult = baseResult();
+    siblingResult.learnings = [];
+    const sibling = await writeExtraction(cfg, index, {
+      result: siblingResult,
+      agent: "codex",
+      sessionId: "01a01e43-7459-76a3-a081-cf534deac854",
+      scope: SCOPE,
+      nowIso: "2026-06-10T13:00:00.000Z",
+    });
+
+    expect(revision.sessionNotePath).toBe(first.sessionNotePath);
+    expect(sibling.sessionNotePath).not.toBe(first.sessionNotePath);
+    expect(revisionNote?.frontmatter.id).toBe(firstNote?.frontmatter.id);
+    expect(revisionNote?.frontmatter.created).toBe(firstNote?.frontmatter.created);
+    expect(revisionNote?.body).toContain("Revised outcome");
+    expect(index.count()).toBe(2);
+  });
+
   it("fakeExtract gates trivial transcripts", () => {
     const empty: NormalizedTranscript = {
       agent: "claude-code",
