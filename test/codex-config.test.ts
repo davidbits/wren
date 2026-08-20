@@ -108,7 +108,7 @@ describe("Codex config writer", () => {
 
     const changes = await writeCodexConfig(project);
 
-    expect(changes).toContain("project trust (global)");
+    expect(changes).toContain(`project trust (${codexHome})`);
     expect(changes).toContain("Stop hook (hooks.json)");
     expect(changes).toContain("SessionStart hook (hooks.json)");
 
@@ -141,5 +141,26 @@ describe("Codex config writer", () => {
         ],
       },
     ]);
+  });
+
+  it("writes project trust to multiple Codex homes", async () => {
+    const secondHome = join(tmpdir(), `wren-codex-${randomUUID()}`);
+    const project = join(codexHome, "multi-home-project");
+    await mkdir(project, { recursive: true });
+
+    try {
+      const changes = await writeCodexConfig(project, [codexHome, secondHome]);
+
+      expect(changes).toContain(`project trust (${codexHome})`);
+      expect(changes).toContain(`project trust (${secondHome})`);
+      for (const home of [codexHome, secondHome]) {
+        const config = parse(await Bun.file(join(home, "config.toml")).text()) as {
+          projects?: Record<string, { trust_level?: string }>;
+        };
+        expect(config.projects?.[project]?.trust_level).toBe("trusted");
+      }
+    } finally {
+      await rm(secondHome, { recursive: true, force: true });
+    }
   });
 });

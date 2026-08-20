@@ -134,7 +134,7 @@ never captures a project you've turned off.
 | Command | What it does |
 | --- | --- |
 | `install [--codex] [--systemd]` | Config, MCP registration, worker unit |
-| `enable <path> [--codex]` | Opt a project in (registry + agent hooks) |
+| `enable <path> [--codex]` | Opt in; `--codex` adds hooks and trust to every detected Codex home |
 | `disable <path>` | Opt a project out |
 | `worker [--once] [--interval N]` | Drain the queue (daemon by default) |
 | `mcp` | Run the stdio MCP server |
@@ -163,6 +163,12 @@ max_inject = 15                          # cap on memories injected at SessionSt
 > leftover `~/.codex-old`, ...). `wren codex-home` lists the ones it finds with
 > session counts and persists your choice as `codex_home`. Defaults to
 > `$CODEX_HOME` or `~/.codex`.
+
+`wren enable <path> --codex` trusts the project in every detected Codex home.
+The project-local capture hook accepts the absolute transcript path supplied by
+each Codex session, so all configured homes feed the same Wren queue. Approve
+the hook with `/hooks` in each home. The single `codex_home` setting remains the
+fallback used only when Codex omits `transcript_path`.
 
 Environment overrides: `WREN_CONFIG_DIR`, `WREN_DATA_DIR`,
 `WREN_FAKE_EXTRACTOR` (offline heuristic extractor, no LLM — useful for

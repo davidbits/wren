@@ -64,12 +64,16 @@ interface CodexConfigToml {
   [k: string]: unknown;
 }
 
-/** Global `~/.codex/config.toml` — user-level layer (trust + MCP servers). */
-function globalConfigPath(): string {
-  return join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "config.toml");
+function defaultCodexHome(): string {
+  return process.env.CODEX_HOME ?? join(homedir(), ".codex");
+}
+
+/** Global Codex config — user-level layer (trust + MCP servers). */
+function globalConfigPath(codexHome = defaultCodexHome()): string {
+  return join(codexHome, "config.toml");
 }
 function globalHooksJsonPath(): string {
-  return join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "hooks.json");
+  return join(defaultCodexHome(), "hooks.json");
 }
 function projectConfigTomlPath(projectPath: string): string {
   return join(projectPath, ".codex", "config.toml");
@@ -133,22 +137,29 @@ async function writeBackedUp(path: string, body: string): Promise<void> {
 
 /**
  * Wire Codex capture for one project: Stop hook in the project `hooks.json`,
- * trust in the global config. Migrates away any Stop hook a prior version wrote
- * into the project `config.toml`. Returns the list of changes.
+ * trust in every supplied Codex home's global config. Migrates away any Stop
+ * hook a prior version wrote into the project `config.toml`. Returns the list
+ * of changes.
  */
-export async function writeCodexConfig(projectPath: string): Promise<string[]> {
+export async function writeCodexConfig(
+  projectPath: string,
+  codexHomes: string[] = [defaultCodexHome()],
+): Promise<string[]> {
   const changes: string[] = [];
   const cmd = captureCommand();
 
-  // 1. Project trust → global config.toml. Gates whether Codex loads the
-  //    project's `.codex/` layer (and therefore the Stop hook) at all.
-  const globalPath = globalConfigPath();
-  const global = await readToml<CodexConfigToml>(globalPath);
-  global.projects ??= {};
-  if (global.projects[projectPath]?.trust_level !== "trusted") {
-    global.projects[projectPath] = { ...global.projects[projectPath], trust_level: "trusted" };
-    await writeBackedUp(globalPath, stringify(global as Record<string, unknown>));
-    changes.push("project trust (global)");
+  // 1. Project trust → each global config.toml. Trust gates whether that Codex
+  //    home loads the project's `.codex/` layer (and therefore the Stop hook).
+  const homes = [...new Set(codexHomes.length ? codexHomes : [defaultCodexHome()])];
+  for (const codexHome of homes) {
+    const globalPath = globalConfigPath(codexHome);
+    const global = await readToml<CodexConfigToml>(globalPath);
+    global.projects ??= {};
+    if (global.projects[projectPath]?.trust_level !== "trusted") {
+      global.projects[projectPath] = { ...global.projects[projectPath], trust_level: "trusted" };
+      await writeBackedUp(globalPath, stringify(global as Record<string, unknown>));
+      changes.push(`project trust (${codexHome})`);
+    }
   }
 
   // 2. Stop hook → project hooks.json (canonical hook location).

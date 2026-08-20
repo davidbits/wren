@@ -5,10 +5,12 @@
  * source of truth the worker/hooks re-check) AND the agent's native per-project
  * config — Claude `.claude/settings.local.json` hooks and (with `--codex`) the
  * Codex `<project>/.codex/config.toml` Stop hook. Codex is opt-in because it
- * also seeds a project-trust entry in the global `~/.codex/config.toml`.
+ * also seeds project-trust entries in every detected Codex home.
  */
 import { mkdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { detectCodexHomes } from "../adapters/codex-home.ts";
 import {
   type Config,
   ensureDirs,
@@ -81,6 +83,8 @@ async function writeClaudeHooks(projectPath: string): Promise<string[]> {
 
 export interface EnableOptions {
   codex?: boolean;
+  /** Explicit targets for tests/embedding; normal CLI use auto-detects homes. */
+  codexHomes?: string[];
 }
 
 export async function enableProject(
@@ -108,10 +112,16 @@ export async function enableProject(
     console.log("• Claude hooks already present");
   }
 
-  // 3. Codex (opt-in): Stop hook in <project>/.codex/config.toml, trust in global.
+  // 3. Codex (opt-in): one project hook, trust in every detected global home.
   if (opts.codex) {
-    const codexChanges = await writeCodexConfig(path);
-    console.log(`✓ Codex config updated: ${codexChanges.join(", ")}`);
+    const detected = opts.codexHomes ?? (await detectCodexHomes()).map((home) => home.path);
+    const codexHomes = detected.length
+      ? detected
+      : [process.env.CODEX_HOME ?? join(homedir(), ".codex")];
+    const codexChanges = await writeCodexConfig(path, codexHomes);
+    console.log(
+      `✓ Codex config updated (${codexHomes.length} home${codexHomes.length === 1 ? "" : "s"}): ${codexChanges.join(", ") || "already configured"}`,
+    );
     if (codexChanges.includes("Stop hook (hooks.json)")) {
       console.log(
         `  → wrote ${join(path, ".codex", "hooks.json")} — gitignore it (embeds a\n` +
@@ -120,6 +130,7 @@ export async function enableProject(
           "    (Codex hash-pins command hooks; it won't fire until trusted).",
       );
     }
+    console.log("  → verify the capture hook under /hooks in each Codex home");
   }
 
   console.log("\nDone. New sessions in this project will be captured.");

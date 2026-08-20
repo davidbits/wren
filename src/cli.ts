@@ -41,7 +41,7 @@ Usage: wren <command> [options]
 
 Commands:
   install [--codex] [--systemd]   Set up config, MCP registration, worker unit
-  enable <path> [--codex]         Opt a project in (registry + agent hooks)
+  enable <path> [--codex]         Opt in; --codex trusts all detected homes
   disable <path>                  Opt a project out
   worker [--once] [--interval N]  Drain the queue (daemon by default)
   mcp                             Run the stdio MCP server
