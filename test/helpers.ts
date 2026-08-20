@@ -18,6 +18,7 @@ export function makeTmpConfig(): Config {
     extractorModel: undefined,
     maxInject: 15,
     settleMs: 180_000,
+    codexRecaptureMs: 3_600_000,
     fakeExtractor: true,
   };
 }

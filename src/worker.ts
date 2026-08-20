@@ -11,7 +11,7 @@ import { enabledScopeFor, loadProjects } from "./config.ts";
 import { extract } from "./extractor/run.ts";
 import {
   acquireLock,
-  alreadyDone,
+  getDoneState,
   listPending,
   markDone,
   markFailed,
@@ -50,16 +50,34 @@ async function processJob(cfg: Config, index: MemoryIndex, pending: PendingJob):
   // turns N per-turn fires into one end-of-session extraction. The pending file
   // is left in place; the next drain re-checks it. Claude `SessionEnd` already
   // marks a real end, so its transcript is settled by definition.
+  let transcriptMtimeMs: number | undefined;
   if (job.agent === "codex") {
     const { mtimeMs } = await stat(job.transcriptPath);
+    transcriptMtimeMs = mtimeMs;
     if (Date.now() - mtimeMs < cfg.settleMs) {
       log.debug("transcript still settling; deferring", { session: job.sessionId });
       return "deferred";
     }
   }
 
+  const previous = await getDoneState(cfg, job.sessionId);
+  if (job.agent === "codex" && previous?.doneAt && transcriptMtimeMs !== undefined) {
+    const previousDoneMs = Date.parse(previous.doneAt);
+    if (Number.isFinite(previousDoneMs)) {
+      if (transcriptMtimeMs < previousDoneMs) {
+        log.info("already processed; skipping", { session: job.sessionId });
+        await markDone(cfg, pending, previous.hash ?? "already-done");
+        return "skipped";
+      }
+      if (Date.now() - previousDoneMs < cfg.codexRecaptureMs) {
+        log.debug("codex revision throttled; deferring", { session: job.sessionId });
+        return "deferred";
+      }
+    }
+  }
+
   const hash = await hashTranscript(job.transcriptPath);
-  if (await alreadyDone(cfg, job.sessionId, hash)) {
+  if (previous?.hash === hash) {
     log.info("already processed; skipping", { session: job.sessionId });
     await markDone(cfg, pending, hash);
     return "skipped";
@@ -88,6 +106,7 @@ async function processJob(cfg: Config, index: MemoryIndex, pending: PendingJob):
     });
     log.info("wrote memories", {
       session: job.sessionId,
+      revision: !!previous?.hash,
       learnings: summary.learningPaths.length,
       session_note: !!summary.sessionNotePath,
     });

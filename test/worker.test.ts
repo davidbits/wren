@@ -105,6 +105,22 @@ describe("worker settle window", () => {
     expect((await listPending(cfg)).length).toBe(0);
   });
 
+  it("throttles a changed Codex session after an earlier extraction", async () => {
+    cfg.settleMs = 0;
+    cfg.codexRecaptureMs = 60_000;
+    const path = await writeTranscript("revision.jsonl", codexRollout(project), 120_000);
+    await enqueue(cfg, job("codex", path, "sess-revision"));
+    expect((await runOnce(cfg)).done).toBe(1);
+
+    await writeFile(path, `${codexRollout(project)}\n`);
+    await enqueue(cfg, job("codex", path, "sess-revision"));
+    const stats = await runOnce(cfg);
+
+    expect(stats.deferred).toBe(1);
+    expect(stats.done).toBe(0);
+    expect((await listPending(cfg)).length).toBe(1);
+  });
+
   it("never defers a Claude job, even with a fresh transcript", async () => {
     const path = await writeTranscript("claude.jsonl", claudeTranscript(project));
     await enqueue(cfg, job("claude-code", path, "sess-claude"));

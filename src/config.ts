@@ -42,6 +42,8 @@ export interface Config {
    * session from inactivity (trailing debounce). Claude jobs ignore this.
    */
   settleMs: number;
+  /** Minimum delay between revisions of the same Codex session. */
+  codexRecaptureMs: number;
   /** When true the extractor uses a local heuristic instead of Codex (offline/testing). */
   fakeExtractor: boolean;
 }
@@ -73,6 +75,7 @@ interface RawConfig {
   extractor_model?: string;
   max_inject?: number;
   settle_ms?: number;
+  codex_recapture_ms?: number;
 }
 
 /** Expand a leading `~` to the home dir (TOML can't, so config_home may use it). */
@@ -108,9 +111,10 @@ export async function loadConfig(): Promise<Config> {
     extractorModel: raw.extractor_model ?? process.env.WREN_EXTRACTOR_MODEL,
     maxInject: raw.max_inject ?? 15,
     settleMs: raw.settle_ms ?? Number(process.env.WREN_SETTLE_MS ?? 180_000),
+    codexRecaptureMs:
+      raw.codex_recapture_ms ?? Number(process.env.WREN_CODEX_RECAPTURE_MS ?? 3_600_000),
     fakeExtractor:
-      process.env.WREN_FAKE_EXTRACTOR === "1" ||
-      process.env.WREN_FAKE_EXTRACTOR === "true",
+      process.env.WREN_FAKE_EXTRACTOR === "1" || process.env.WREN_FAKE_EXTRACTOR === "true",
   };
 }
 

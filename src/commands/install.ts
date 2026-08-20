@@ -42,8 +42,11 @@ max_inject = ${cfg.maxInject}
 
 # Quiet period (ms) a Codex transcript must be idle before it is extracted.
 # Codex's Stop hook fires every turn with no session-end event, so we wait for
-# the session to go quiet before extracting once. Default 180000 (3 min).
+# the session to go quiet before extracting. Default 180000 (3 min).
 # settle_ms = ${cfg.settleMs}
+
+# Minimum delay between revisions of one Codex session. Default 3600000 (1 hour).
+# codex_recapture_ms = ${cfg.codexRecaptureMs}
 `;
   await Bun.write(path, template);
   return true;
@@ -124,9 +127,7 @@ export async function install(cfg: Config, opts: InstallOptions = {}): Promise<v
         : "• could not start daemon — start manually: systemctl --user enable --now wren.service",
     );
   } else {
-    console.log(
-      "  start the worker daemon with:\n    systemctl --user enable --now wren.service",
-    );
+    console.log("  start the worker daemon with:\n    systemctl --user enable --now wren.service");
   }
 
   console.log("\nNext: enable a project →  wren enable <path>");
