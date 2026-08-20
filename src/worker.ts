@@ -8,7 +8,7 @@ import { stat, writeFile } from "node:fs/promises";
 import { hashTranscript, parseTranscript } from "./adapters/index.ts";
 import type { Config } from "./config.ts";
 import { enabledScopeFor, loadProjects } from "./config.ts";
-import { extract } from "./extractor/run.ts";
+import { extract, resolveExtractorProvenance } from "./extractor/run.ts";
 import {
   acquireLock,
   getDoneState,
@@ -84,12 +84,14 @@ async function processJob(cfg: Config, index: MemoryIndex, pending: PendingJob):
   }
 
   try {
+    const extractor = await resolveExtractorProvenance(cfg);
+    job.extractor = extractor;
     const transcript = await parseTranscript(job.agent, job.transcriptPath);
     transcript.cwd ||= job.cwd;
     transcript.sessionId ||= job.sessionId;
 
     const existing = await readLearnings(cfg, ["global", scope]);
-    const result = await extract(cfg, transcript, scope, existing);
+    const result = await extract(cfg, transcript, scope, existing, extractor);
 
     if (!result.durable) {
       log.info("nothing durable; no write", { session: job.sessionId });

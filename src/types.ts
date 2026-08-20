@@ -13,6 +13,22 @@ export type Agent = "claude-code" | "codex";
 /** Note kinds. `session` = audit note; the rest are atomic RAG learnings. */
 export type MemoryType = "learning" | "preference" | "decision" | "failure" | "session";
 
+/** Runtime identity of the extractor that produced a memory note. */
+export interface ExtractorProvenance {
+  engine: "codex" | "fake";
+  /** Command configured for extraction (for example `codex` or an absolute path). */
+  binary: string;
+  /** Effective Codex config/auth home used by `codex exec`. */
+  codex_home: string;
+  /** Codex home from which Wren selected source transcripts. */
+  transcript_home: string;
+  /** Resolved model name, or `codex-default` when Codex owns the default. */
+  model: string;
+  reasoning_effort?: string;
+  model_provider?: string;
+  profile?: string;
+}
+
 /** A single tool invocation extracted from a transcript. */
 export interface ToolCall {
   name: string;
@@ -56,6 +72,8 @@ export interface Job {
   reason?: string;
   /** Agent/subagent type supplied by the hook payload. */
   agentType?: string;
+  /** Captured before extraction so done/failed records retain runtime provenance. */
+  extractor?: ExtractorProvenance;
   /** Incremented by the worker on transient failure; capped before going to failed/. */
   attempt?: number;
 }
@@ -102,6 +120,8 @@ export interface ExtractionResult {
   durable: boolean;
   session?: SessionNote;
   learnings: AtomicLearning[];
+  /** Added by Wren after model output validation; never supplied by the model. */
+  extractor?: ExtractorProvenance;
 }
 
 /** Frontmatter persisted at the top of every note. */
@@ -114,6 +134,9 @@ export interface MemoryFrontmatter {
   source_session: string;
   title: string;
   tags: string[];
+  /** Latest extraction/revision time and runtime provenance. */
+  extracted?: string;
+  extractor?: ExtractorProvenance;
   supersedes?: string;
   superseded_by?: string;
 }

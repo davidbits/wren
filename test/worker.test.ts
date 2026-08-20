@@ -103,6 +103,14 @@ describe("worker settle window", () => {
     expect(stats.deferred).toBe(0);
     expect(stats.done).toBe(1);
     expect((await listPending(cfg)).length).toBe(0);
+    const done = await Bun.file(join(cfg.queueDir, "done", "sess-stale.json")).json();
+    expect(done.extractor).toEqual({
+      engine: "fake",
+      binary: "codex",
+      codex_home: cfg.codexHome,
+      transcript_home: cfg.codexHome,
+      model: "local-heuristic",
+    });
   });
 
   it("throttles a changed Codex session after an earlier extraction", async () => {

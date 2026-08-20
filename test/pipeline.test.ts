@@ -48,8 +48,17 @@ describe("vault write pipeline", () => {
   });
 
   it("writes a session note + learning and indexes them", async () => {
+    const result = baseResult();
+    result.extractor = {
+      engine: "codex",
+      binary: "codex",
+      codex_home: "/home/x/.codex-work",
+      transcript_home: "/home/x/.codex-transcripts",
+      model: "gpt-test",
+      reasoning_effort: "medium",
+    };
     const summary = await writeExtraction(cfg, index, {
-      result: baseResult(),
+      result,
       agent: "claude-code",
       sessionId: "abcdef123456",
       scope: SCOPE,
@@ -65,6 +74,11 @@ describe("vault write pipeline", () => {
     expect(note?.frontmatter.title).toBe("Use atomic rename for the queue");
     expect(note?.body).toContain("temp file then rename");
     expect(note?.body).toContain("Related: [[session-");
+    expect(note?.frontmatter.extracted).toBe("2026-06-10T12:00:00.000Z");
+    expect(note?.frontmatter.extractor).toEqual(result.extractor);
+
+    const session = await readNote(summary.sessionNotePath!);
+    expect(session?.frontmatter.extractor).toEqual(result.extractor);
 
     // Indexed + searchable.
     const hits = index.search("rename", { scopes: [SCOPE, "global"] });

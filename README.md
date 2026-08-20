@@ -184,6 +184,14 @@ scope: /home/you/projects/foo   # project path, or "global"
 agent: claude-code
 created: 2026-06-10T21:14:21.937Z
 source_session: <session id>
+extracted: 2026-06-10T21:14:22.104Z
+extractor:
+  engine: codex
+  binary: codex
+  codex_home: /home/you/.codex-work       # config/auth account context
+  transcript_home: /home/you/.codex       # source transcript selection
+  model: gpt-5.6-terra
+  reasoning_effort: medium
 title: Use bun for project commands
 tags: [bun, package-manager]
 ---
@@ -198,6 +206,10 @@ Related: [[session-2026-06-10-...]]
 
 Vault layout: `projects/<slug>/{learnings,sessions}/` per project, plus a shared
 `global/` scope for cross-project facts (user preferences, tooling quirks).
+Successful jobs and generated notes record extractor provenance. The Codex
+config/auth home is intentionally reported separately from the transcript home;
+Wren does not change account selection merely because transcripts came from a
+different Codex home. `wren status` shows both homes and the resolved model.
 
 ## Safety
 

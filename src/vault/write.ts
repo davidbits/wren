@@ -14,6 +14,7 @@ import type {
   Agent,
   AtomicLearning,
   ExtractionResult,
+  ExtractorProvenance,
   MemoryFrontmatter,
   MemoryNote,
 } from "../types.ts";
@@ -79,6 +80,7 @@ export async function writeExtraction(
       nowIso,
       existing,
       sessionLink: hasSession ? sessionStem : undefined,
+      extractor: result.extractor,
     });
     learningPaths.push(out.path);
     learningStems.push(stem(out.path));
@@ -93,6 +95,7 @@ export async function writeExtraction(
       nowIso,
       path: sessionPath,
       learningStems,
+      extractor: result.extractor,
     });
   }
 
@@ -114,9 +117,11 @@ async function writeLearning(
     nowIso: string;
     existing: Map<string, MemoryNote>;
     sessionLink?: string;
+    extractor?: ExtractorProvenance;
   },
 ): Promise<{ path: string; id: string }> {
-  const { learning, agent, sessionId, projectScope, nowIso, existing, sessionLink } = args;
+  const { learning, agent, sessionId, projectScope, nowIso, existing, sessionLink, extractor } =
+    args;
   const scope = normalizeScope(learning.scope, projectScope);
 
   // Resolve identity: update-in-place if the extractor echoed a known id.
@@ -148,6 +153,7 @@ async function writeLearning(
     source_session: sessionId,
     title: scrub(learning.title),
     tags: learning.tags ?? [],
+    ...(extractor ? { extracted: nowIso, extractor } : {}),
     ...(supersedes ? { supersedes } : {}),
   };
 
@@ -173,9 +179,10 @@ async function writeSessionNote(
     nowIso: string;
     path: string;
     learningStems: string[];
+    extractor?: ExtractorProvenance;
   },
 ): Promise<void> {
-  const { session, agent, sessionId, scope, nowIso, path, learningStems } = args;
+  const { session, agent, sessionId, scope, nowIso, path, learningStems, extractor } = args;
   await mkdir(sessionsDir(cfg, scope), { recursive: true });
 
   const previous = await readNote(path);
@@ -194,6 +201,7 @@ async function writeSessionNote(
     source_session: sessionId,
     title: scrub(title),
     tags: session.tags ?? [],
+    ...(extractor ? { extracted: nowIso, extractor } : {}),
   };
 
   const files = session.files_touched?.length

@@ -11,10 +11,17 @@
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { z } from "zod";
 import type { Config } from "../config.ts";
-import type { ExtractionResult, MemoryNote, NormalizedTranscript } from "../types.ts";
+import type {
+  ExtractionResult,
+  ExtractorProvenance,
+  MemoryNote,
+  NormalizedTranscript,
+} from "../types.ts";
 import { logger } from "../util/log.ts";
 // Imported (not read from disk) so it's bundled into the compiled binary, which
 // has no source tree. `codex exec --output-schema` needs a real path, so we
@@ -63,16 +70,132 @@ export async function extract(
   transcript: NormalizedTranscript,
   scope: string,
   existing: MemoryNote[],
+  provenance?: ExtractorProvenance,
 ): Promise<ExtractionResult> {
   const prompt = buildPrompt(transcript, scope, existing);
+  const extractor = provenance ?? (await resolveExtractorProvenance(cfg));
   if (cfg.fakeExtractor) {
     log.warn("using FAKE extractor (no LLM)");
-    return fakeExtract(transcript, scope);
+    return { ...fakeExtract(transcript, scope), extractor };
   }
-  return runCodex(cfg, prompt);
+  return runCodex(cfg, prompt, extractor);
 }
 
-async function runCodex(cfg: Config, prompt: string): Promise<ExtractionResult> {
+interface CodexConfigMetadata {
+  model?: string;
+  model_reasoning_effort?: string;
+  model_provider?: string;
+}
+
+type ExtractorEnvironment = Record<string, string | undefined>;
+
+function extraCodexArgs(env: ExtractorEnvironment): string[] {
+  return (env.WREN_CODEX_ARGS ?? "").split(/\s+/).filter(Boolean);
+}
+
+function lastFlagValue(args: string[], short: string, long: string): string | undefined {
+  let found: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === short || arg === long) found = args[i + 1];
+    else if (arg.startsWith(`${long}=`)) found = arg.slice(long.length + 1);
+  }
+  return found;
+}
+
+function explicitOverride(args: string[], key: string): string | undefined {
+  let found: string | undefined;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (key === "model") {
+      if (arg === "-m" || arg === "--model") found = args[i + 1];
+      else if (arg.startsWith("--model=")) found = arg.slice("--model=".length);
+    }
+    let value: string | undefined;
+    if (arg === "-c" || arg === "--config") value = args[i + 1];
+    else if (arg.startsWith("--config=")) value = arg.slice("--config=".length);
+    if (value?.startsWith(`${key}=`)) {
+      found = value.slice(key.length + 1).replace(/^['"]|['"]$/g, "");
+    }
+  }
+  return found;
+}
+
+async function readCodexConfig(path: string): Promise<CodexConfigMetadata> {
+  try {
+    const file = Bun.file(path);
+    if (!(await file.exists())) return {};
+    const raw = parseToml(await file.text()) as Record<string, unknown>;
+    return {
+      model: typeof raw.model === "string" ? raw.model : undefined,
+      model_reasoning_effort:
+        typeof raw.model_reasoning_effort === "string" ? raw.model_reasoning_effort : undefined,
+      model_provider: typeof raw.model_provider === "string" ? raw.model_provider : undefined,
+    };
+  } catch (err) {
+    log.warn("could not read Codex config for provenance", { path, err: String(err) });
+    return {};
+  }
+}
+
+function mergeCodexConfig(...layers: CodexConfigMetadata[]): CodexConfigMetadata {
+  const merged: CodexConfigMetadata = {};
+  for (const layer of layers) {
+    if (layer.model !== undefined) merged.model = layer.model;
+    if (layer.model_reasoning_effort !== undefined) {
+      merged.model_reasoning_effort = layer.model_reasoning_effort;
+    }
+    if (layer.model_provider !== undefined) merged.model_provider = layer.model_provider;
+  }
+  return merged;
+}
+
+/** Resolve the config/auth context inherited by `codex exec`, without changing it. */
+export async function resolveExtractorProvenance(
+  cfg: Config,
+  env: ExtractorEnvironment = process.env,
+): Promise<ExtractorProvenance> {
+  const codexHome = env.CODEX_HOME ?? join(homedir(), ".codex");
+  if (cfg.fakeExtractor) {
+    return {
+      engine: "fake",
+      binary: cfg.codexBin,
+      codex_home: codexHome,
+      transcript_home: cfg.codexHome,
+      model: "local-heuristic",
+    };
+  }
+
+  const extra = extraCodexArgs(env);
+  const profile = lastFlagValue(extra, "-p", "--profile");
+  const [systemConfig, userConfig, profileConfig] = await Promise.all([
+    readCodexConfig("/etc/codex/config.toml"),
+    readCodexConfig(join(codexHome, "config.toml")),
+    profile ? readCodexConfig(join(codexHome, `${profile}.config.toml`)) : {},
+  ]);
+  const defaults = mergeCodexConfig(systemConfig, userConfig, profileConfig);
+  const model =
+    explicitOverride(extra, "model") ?? cfg.extractorModel ?? defaults.model ?? "codex-default";
+  const reasoningEffort =
+    explicitOverride(extra, "model_reasoning_effort") ?? defaults.model_reasoning_effort;
+  const modelProvider = explicitOverride(extra, "model_provider") ?? defaults.model_provider;
+  return {
+    engine: "codex",
+    binary: cfg.codexBin,
+    codex_home: codexHome,
+    transcript_home: cfg.codexHome,
+    model,
+    ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
+    ...(modelProvider ? { model_provider: modelProvider } : {}),
+    ...(profile ? { profile } : {}),
+  };
+}
+
+async function runCodex(
+  cfg: Config,
+  prompt: string,
+  provenance: ExtractorProvenance,
+): Promise<ExtractionResult> {
   const tmpDir = join(cfg.dataDir, "tmp");
   await mkdir(tmpDir, { recursive: true });
   const outPath = join(tmpDir, `extract-${randomUUID()}.json`);
@@ -94,10 +217,9 @@ async function runCodex(cfg: Config, prompt: string): Promise<ExtractionResult> 
     outPath,
   ];
   if (cfg.extractorModel) args.push("-m", cfg.extractorModel);
-  const extra = process.env.WREN_CODEX_ARGS;
-  if (extra) args.push(...extra.split(/\s+/).filter(Boolean));
+  args.push(...extraCodexArgs(process.env));
 
-  log.info("running codex exec", { bin: cfg.codexBin, model: cfg.extractorModel });
+  log.info("running codex exec", provenance);
   const proc = Bun.spawn([cfg.codexBin, ...args], {
     stdin: Buffer.from(prompt),
     stdout: "pipe",
@@ -114,7 +236,7 @@ async function runCodex(cfg: Config, prompt: string): Promise<ExtractionResult> 
     if (!(await file.exists())) {
       throw new Error(`codex produced no output file (stderr: ${stderr.slice(-1000)})`);
     }
-    return parseResult(await file.text());
+    return { ...parseResult(await file.text()), extractor: provenance };
   } finally {
     await rm(outPath, { force: true });
   }
