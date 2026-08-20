@@ -48,6 +48,8 @@ describe("codex-capture payload contract", () => {
       session_id: "s-doc",
       transcript_path: transcriptPath,
       cwd: project,
+      reason: "turn_complete",
+      agent_type: "reviewer",
     });
 
     const pending = await listPending(cfg);
@@ -55,6 +57,8 @@ describe("codex-capture payload contract", () => {
     expect(pending[0]?.job.agent).toBe("codex");
     expect(pending[0]?.job.sessionId).toBe("s-doc");
     expect(pending[0]?.job.transcriptPath).toBe(transcriptPath);
+    expect(pending[0]?.job.reason).toBe("turn_complete");
+    expect(pending[0]?.job.agentType).toBe("reviewer");
   });
 
   it("no-ops when transcript_path is null and no rollout is discoverable", async () => {

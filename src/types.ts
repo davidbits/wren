@@ -45,9 +45,17 @@ export interface NormalizedTranscript {
 export interface Job {
   agent: Agent;
   transcriptPath: string;
+  /** Original agent-owned path when transcriptPath points at Wren's spool. */
+  sourceTranscriptPath?: string;
+  /** Wren owns transcriptPath and may remove it after successful processing. */
+  transcriptOwned?: boolean;
   cwd: string;
   sessionId: string;
   enqueuedAt: string;
+  /** Hook-specific termination reason, when supplied by the agent. */
+  reason?: string;
+  /** Agent/subagent type supplied by the hook payload. */
+  agentType?: string;
   /** Incremented by the worker on transient failure; capped before going to failed/. */
   attempt?: number;
 }

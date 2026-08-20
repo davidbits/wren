@@ -11,7 +11,7 @@
  * atomic on POSIX, so concurrent or crashed workers can't corrupt state.
  */
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Config } from "../config.ts";
 import type { Job } from "../types.ts";
@@ -24,6 +24,7 @@ function dirs(cfg: Config) {
     pending: join(cfg.queueDir, "pending"),
     done: join(cfg.queueDir, "done"),
     failed: join(cfg.queueDir, "failed"),
+    transcripts: join(cfg.queueDir, "transcripts"),
     lock: join(cfg.queueDir, "worker.lock"),
   };
 }
@@ -38,7 +39,29 @@ async function ensure(cfg: Config): Promise<void> {
     mkdir(d.pending, { recursive: true }),
     mkdir(d.done, { recursive: true }),
     mkdir(d.failed, { recursive: true }),
+    mkdir(d.transcripts, { recursive: true }),
   ]);
+}
+
+/** Copy an agent-owned transcript into Wren storage before the agent can remove it. */
+export async function stageTranscript(
+  cfg: Config,
+  sessionId: string,
+  sourcePath: string,
+): Promise<string> {
+  await ensure(cfg);
+  const d = dirs(cfg);
+  const dest = join(d.transcripts, `${safeName(sessionId)}-${randomUUID()}.jsonl`);
+  const tmp = `${dest}.tmp`;
+  try {
+    await copyFile(sourcePath, tmp);
+    await chmod(tmp, 0o600);
+    await rename(tmp, dest);
+  } catch (err) {
+    await rm(tmp, { force: true });
+    throw err;
+  }
+  return dest;
 }
 
 /** Append (or refresh) a job. Atomic; safe to call from the fire-and-forget hook. */
@@ -77,16 +100,40 @@ export async function listPending(cfg: Config): Promise<PendingJob[]> {
 }
 
 /** True if this exact session+transcript was already processed successfully. */
-export async function alreadyDone(cfg: Config, sessionId: string, hash: string): Promise<boolean> {
+export interface DoneState {
+  hash?: string;
+  doneAt?: string;
+}
+
+export async function getDoneState(cfg: Config, sessionId: string): Promise<DoneState | null> {
   const marker = join(dirs(cfg).done, `${safeName(sessionId)}.json`);
   const file = Bun.file(marker);
-  if (!(await file.exists())) return false;
+  if (!(await file.exists())) return null;
   try {
-    const prev = (await file.json()) as { hash?: string };
-    return prev.hash === hash;
+    return (await file.json()) as DoneState;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** True if this exact session+transcript was already processed successfully. */
+export async function alreadyDone(cfg: Config, sessionId: string, hash: string): Promise<boolean> {
+  return (await getDoneState(cfg, sessionId))?.hash === hash;
+}
+
+async function removePendingIfCurrent(pending: PendingJob): Promise<void> {
+  try {
+    const current = (await Bun.file(pending.path).json()) as Job;
+    if (
+      current.enqueuedAt !== pending.job.enqueuedAt ||
+      current.transcriptPath !== pending.job.transcriptPath
+    ) {
+      return;
+    }
+  } catch {
+    return;
+  }
+  await rm(pending.path, { force: true });
 }
 
 /** Move a job from pending to done, recording the transcript hash for idempotency. */
@@ -97,7 +144,10 @@ export async function markDone(cfg: Config, pending: PendingJob, hash: string): 
     marker,
     JSON.stringify({ ...pending.job, hash, doneAt: new Date().toISOString() }, null, 2),
   );
-  await rm(pending.path, { force: true });
+  await removePendingIfCurrent(pending);
+  if (pending.job.transcriptOwned) {
+    await rm(pending.job.transcriptPath, { force: true });
+  }
 }
 
 /** Move a job to failed/ with the error and attempt count. */
@@ -113,7 +163,7 @@ export async function markFailed(
     dest,
     JSON.stringify({ ...pending.job, error, attempt, failedAt: new Date().toISOString() }, null, 2),
   );
-  await rm(pending.path, { force: true });
+  await removePendingIfCurrent(pending);
 }
 
 /**

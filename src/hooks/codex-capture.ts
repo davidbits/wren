@@ -29,6 +29,8 @@ const CodexStop = z
     session_id: z.string().optional(),
     transcript_path: z.string().nullish(),
     cwd: z.string().optional(),
+    reason: z.string().optional(),
+    agent_type: z.string().optional(),
   })
   .passthrough();
 
@@ -65,6 +67,8 @@ export async function runCodexCapture(): Promise<void> {
     cwd,
     sessionId,
     enqueuedAt: new Date().toISOString(),
+    reason: input.reason,
+    agentType: input.agent_type,
   };
   await enqueue(cfg, job);
   log.info("codex session enqueued", { session: sessionId });

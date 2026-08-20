@@ -13,7 +13,7 @@
  */
 import { selfCommand } from "../commands/integration.ts";
 import { enabledScopeFor, loadConfig, loadProjects } from "../config.ts";
-import { enqueue } from "../queue/queue.ts";
+import { enqueue, stageTranscript } from "../queue/queue.ts";
 import type { Job } from "../types.ts";
 import { logger } from "../util/log.ts";
 import { type ClaudeHookInput, readHookInput } from "./stdin.ts";
@@ -37,12 +37,28 @@ export async function runClaudeCapture(): Promise<void> {
     return;
   }
 
+  let queuedTranscriptPath = transcriptPath;
+  let transcriptOwned = false;
+  try {
+    queuedTranscriptPath = await stageTranscript(cfg, sessionId, transcriptPath);
+    transcriptOwned = true;
+  } catch (err) {
+    log.warn("could not stage transcript; queueing agent path", {
+      session: sessionId,
+      err: String(err),
+    });
+  }
+
   const job: Job = {
     agent: "claude-code",
-    transcriptPath,
+    transcriptPath: queuedTranscriptPath,
+    sourceTranscriptPath: transcriptOwned ? transcriptPath : undefined,
+    transcriptOwned,
     cwd,
     sessionId,
     enqueuedAt: new Date().toISOString(),
+    reason: input.reason,
+    agentType: input.agent_type,
   };
   await enqueue(cfg, job);
 

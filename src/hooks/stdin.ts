@@ -12,4 +12,6 @@ export interface ClaudeHookInput {
   cwd?: string;
   hook_event_name?: string;
   source?: string;
+  reason?: string;
+  agent_type?: string;
 }
