@@ -155,6 +155,8 @@ vault_path = "/home/you/.local/share/wren/vault"
 # codex_home = "~/.codex"                 # which codex home to read transcripts from;
                                           # run `wren codex-home` to detect + pick one
 max_inject = 15                          # cap on memories injected at SessionStart
+# settle_ms = 180000                    # Codex transcript quiet period
+# codex_recapture_ms = 3600000          # minimum delay between session revisions
 ```
 
 > A machine can have more than one codex home (a relocated `$CODEX_HOME`, a
@@ -167,7 +169,8 @@ Environment overrides: `WREN_CONFIG_DIR`, `WREN_DATA_DIR`,
 trying the pipeline without spending tokens), `WREN_LOG_LEVEL`,
 `WREN_CODEX_ARGS`, `WREN_NO_AUTODRAIN`, `WREN_CODEX_BIN` and
 `WREN_EXTRACTOR_MODEL` (override the `codex_bin` / `extractor_model` config
-keys), and `WREN_SETTLE_MS` (Codex idle-settle window, ms, before extraction).
+keys), `WREN_SETTLE_MS` (Codex idle-settle window, ms, before extraction), and
+`WREN_CODEX_RECAPTURE_MS` (minimum delay between revisions of one Codex session).
 
 ## Memory note format
 
@@ -201,6 +204,9 @@ Vault layout: `projects/<slug>/{learnings,sessions}/` per project, plus a shared
 - **Secrets are scrubbed twice** (deterministic regex pass) — over the transcript
   before it reaches the extractor, and over every note before it's written. The
   extractor prompt also forbids emitting credentials.
+- Claude transcripts are copied into a mode-`0600` queue spool before SessionEnd
+  returns, then removed after successful processing. Failed jobs retain their
+  spool copy for diagnosis and recovery.
 - The worker is **single-instance** (lock file) and writes are **atomic**, so
   concurrent session ends can't corrupt the vault or index.
 - Jobs are **idempotent** (keyed on session id + transcript hash) and **retried**
