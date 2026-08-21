@@ -18,6 +18,16 @@ export interface SearchHit extends IndexRow {
   snippet: string;
 }
 
+export type ExplorationRelation = "same_session" | "shared_concept" | "similar_text";
+
+export interface ExploreOptions {
+  scopes?: string[];
+  limit?: number;
+  query?: string;
+  concept?: string;
+  visited?: string[];
+}
+
 export class MemoryIndex {
   private db: Database;
 
@@ -107,6 +117,100 @@ export class MemoryIndex {
     return r ?? null;
   }
 
+  /** Fetch a note only when it belongs to one of the allowed scopes. */
+  getScoped(id: string, scopes?: string[]): IndexRow | null {
+    const row = this.get(id);
+    return row && (!scopes?.length || scopes.includes(row.scope)) ? row : null;
+  }
+
+  /**
+   * Return bounded, agent-selected neighbors. Session membership is a
+   * hyperedge, tags are lightweight concepts, and text similarity is computed
+   * only when requested. No pairwise graph is materialized.
+   */
+  explore(id: string, relation: ExplorationRelation, opts: ExploreOptions = {}): SearchHit[] {
+    const source = this.getScoped(id, opts.scopes);
+    if (!source) return [];
+
+    const limit = opts.limit ?? 10;
+    const excluded = new Set([id, ...(opts.visited ?? [])]);
+    let candidates: SearchHit[];
+
+    if (relation === "same_session") {
+      const match = opts.query ? toMatchExpr(opts.query) : "";
+      const params: (string | number)[] = [];
+      const clauses: string[] = [];
+      if (match) {
+        clauses.push("memories_fts MATCH ?");
+        params.push(match);
+      }
+      clauses.push("source_session = ?");
+      params.push(source.source_session);
+      appendScopeClause(clauses, params, opts.scopes);
+      appendExcludedClause(clauses, params, excluded);
+      params.push(limit);
+      const rank = match ? "bm25(memories_fts)" : "0";
+      const snippet = match
+        ? "snippet(memories_fts, 8, '«', '»', '…', 12)"
+        : "substr(body, 1, 200)";
+      return this.db
+        .query(
+          `SELECT id, type, scope, agent, created, source_session, path, title, body, tags,
+                  ${rank} AS rank, ${snippet} AS snippet
+           FROM memories_fts
+           WHERE ${clauses.join(" AND ")}
+           ORDER BY ${match ? "rank" : "created DESC"}
+           LIMIT ?`,
+        )
+        .all(...params) as SearchHit[];
+    }
+
+    if (relation === "shared_concept") {
+      const sourceTags = source.tags.split(/\s+/).filter(Boolean);
+      const concept = opts.concept?.trim().toLowerCase();
+      const concepts = concept
+        ? sourceTags.filter((tag) => tag.toLowerCase() === concept)
+        : sourceTags;
+      if (!concepts.length) return [];
+      const params: (string | number)[] = [toMatchExpr(concepts.join(" "))];
+      const clauses = ["tags MATCH ?"];
+      appendScopeClause(clauses, params, opts.scopes);
+      appendExcludedClause(clauses, params, excluded);
+      params.push(Math.max(limit * 3, 20));
+      candidates = this.db
+        .query(
+          `SELECT id, type, scope, agent, created, source_session, path, title, body, tags,
+                  bm25(memories_fts) AS rank,
+                  snippet(memories_fts, 8, '«', '»', '…', 12) AS snippet
+           FROM memories_fts
+           WHERE ${clauses.join(" AND ")}
+           ORDER BY rank
+           LIMIT ?`,
+        )
+        .all(...params) as SearchHit[];
+      const allowed = new Set(concepts.map((tag) => tag.toLowerCase()));
+      return candidates
+        .filter(
+          (hit) =>
+            !excluded.has(hit.id) &&
+            hit.tags
+              .split(/\s+/)
+              .filter(Boolean)
+              .some((tag) => allowed.has(tag.toLowerCase())),
+        )
+        .slice(0, limit);
+    }
+
+    const similarityQuery = [source.title, source.tags].filter(Boolean).join(" ");
+    if (!similarityQuery) return [];
+    return this.search(opts.query ? `${similarityQuery} ${opts.query}` : similarityQuery, {
+      scopes: opts.scopes,
+      limit: Math.max(limit * 5, 20),
+    })
+      .filter((hit) => !excluded.has(hit.id))
+      .slice(0, limit);
+  }
+
   /**
    * Full-text search, optionally restricted to a set of scopes. Tokens are
    * quoted and OR-joined for recall; results ranked by bm25.
@@ -177,4 +281,24 @@ export function toMatchExpr(query: string): string {
     .filter((t) => t.length >= 2);
   if (!tokens.length) return "";
   return tokens.map((t) => `"${t}"`).join(" OR ");
+}
+
+function appendScopeClause(
+  clauses: string[],
+  params: (string | number)[],
+  scopes: string[] | undefined,
+): void {
+  if (!scopes?.length) return;
+  clauses.push(`scope IN (${scopes.map(() => "?").join(", ")})`);
+  params.push(...scopes);
+}
+
+function appendExcludedClause(
+  clauses: string[],
+  params: (string | number)[],
+  excluded: Set<string>,
+): void {
+  if (!excluded.size) return;
+  clauses.push(`id NOT IN (${[...excluded].map(() => "?").join(", ")})`);
+  params.push(...excluded);
 }

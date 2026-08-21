@@ -4,7 +4,13 @@ import type { MemoryNote } from "../src/types.ts";
 import { MemoryIndex, toMatchExpr } from "../src/vault/index.ts";
 import { cleanup, makeTmpConfig } from "./helpers.ts";
 
-function note(id: string, scope: string, title: string, body: string): MemoryNote {
+function note(
+  id: string,
+  scope: string,
+  title: string,
+  body: string,
+  overrides: Partial<MemoryNote["frontmatter"]> = {},
+): MemoryNote {
   return {
     frontmatter: {
       id,
@@ -15,6 +21,7 @@ function note(id: string, scope: string, title: string, body: string): MemoryNot
       source_session: "s",
       title,
       tags: ["x"],
+      ...overrides,
     },
     body,
     path: `/tmp/${id}.md`,
@@ -75,5 +82,47 @@ describe("MemoryIndex", () => {
     expect(toMatchExpr("()")).toBe("");
     const hits = index.search("()");
     expect(hits.length).toBe(1);
+  });
+
+  it("explores bounded session, concept, and text pathways", () => {
+    index.upsertNote(
+      note("seed", "/p", "Atomic queue writes", "Write temp files before rename", {
+        source_session: "session-a",
+        tags: ["queue", "safety"],
+      }),
+    );
+    index.upsertNote(
+      note("sibling", "/p", "Recover interrupted writes", "Clean abandoned temp files", {
+        source_session: "session-a",
+        tags: ["recovery"],
+      }),
+    );
+    index.upsertNote(
+      note("concept", "/p", "Serialize queue workers", "Use one writer", {
+        source_session: "session-b",
+        tags: ["queue"],
+      }),
+    );
+    index.upsertNote(
+      note("other-scope", "/other", "Queue elsewhere", "Must stay out", {
+        source_session: "session-c",
+        tags: ["queue"],
+      }),
+    );
+
+    expect(index.explore("seed", "same_session", { scopes: ["/p"] }).map((h) => h.id)).toEqual([
+      "sibling",
+    ]);
+    expect(
+      index
+        .explore("seed", "shared_concept", { scopes: ["/p"], concept: "queue" })
+        .map((h) => h.id),
+    ).toEqual(["concept"]);
+    expect(
+      index
+        .explore("seed", "similar_text", { scopes: ["/p"], visited: ["concept"] })
+        .map((h) => h.id),
+    ).not.toContain("concept");
+    expect(index.explore("seed", "same_session", { scopes: ["/other"] })).toEqual([]);
   });
 });

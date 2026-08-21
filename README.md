@@ -44,7 +44,7 @@ flowchart TD
     extractor --> vault[("Obsidian vault — source of truth<br/>markdown + frontmatter + [[links]]")]
 
     vault -->|rebuildable| index[("Derived index<br/>SQLite FTS5")]
-    index --> mcp["MCP server<br/>search_memories / get_memory / list_recent"]
+    index --> mcp["MCP server<br/>search / get / explore / recent"]
     index -->|recent scoped memories| claudeStart
 
     consolidate["consolidate sweep<br/>prune/supersede near-dupes"] -.-> vault
@@ -226,6 +226,26 @@ Vault layout: `projects/<slug>/{learnings,sessions}/` per project, plus a shared
 Session filenames use a stable 16-character hash of the full source-session ID.
 Each active memory links back to its session, and each session lists all active
 memories accumulated across extraction revisions.
+
+### Agent-directed exploration
+
+MCP search results and `get_memory` expose a small connection menu. Agents can
+call `explore_memory` to follow exactly one bounded pathway at a time:
+
+- `same_session` follows existing `source_session` membership.
+- `shared_concept` treats existing tags as lightweight concepts.
+- `similar_text` runs an on-demand FTS search from the selected note's title
+  and concepts.
+
+Calls may include already visited IDs to avoid cycles. Every returned option
+includes its `via` path. Wren does not materialize pairwise semantic edges or
+automatically expand and fuse a graph; the agent chooses each next hop.
+Every MCP action returns a consistent structured envelope with `status`,
+`summary`, `results`, and `_hints`. Search and recent results suggest
+`get_memory`; loaded memories suggest `explore_memory`; exploration results
+suggest the next `get_memory` hop. Empty and missing results include recovery
+calls and warnings. `get_memory` also documents optional `query`, `visited`,
+`limit`, and `scope` controls.
 
 Successful jobs and generated notes record extractor provenance. `codex_home`
 records the config/auth home inherited by `codex exec`; `transcript_home`
