@@ -139,6 +139,8 @@ export interface MemoryFrontmatter {
   extractor?: ExtractorProvenance;
   supersedes?: string;
   superseded_by?: string;
+  /** Soft-deletion timestamp. Deleted notes remain in the vault but not the active index. */
+  deleted?: string;
 }
 
 /** A fully materialized note (frontmatter + body), as read from / written to disk. */

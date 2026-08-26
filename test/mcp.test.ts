@@ -22,6 +22,9 @@ let client: Client;
 let index: MemoryIndex;
 let server: ReturnType<typeof createMcpServer>;
 let seedId: string;
+let seedSessionId: string;
+let seedSiblingId: string;
+let otherSessionId: string;
 
 interface ToolResponse {
   content: Array<{ type: string; text: string }>;
@@ -46,6 +49,13 @@ describe("MCP server (real client)", () => {
     await writeExtraction(cfg, index, {
       result: {
         durable: true,
+        session: {
+          objective: "Seed MCP memories",
+          outcome: "Seeded retrieval and deletion fixtures.",
+          files_touched: [],
+          commands: [],
+          tags: ["queue"],
+        },
         learnings: [
           {
             type: "learning",
@@ -93,6 +103,11 @@ describe("MCP server (real client)", () => {
       nowIso: "2026-06-10T12:01:00.000Z",
     });
     seedId = index.search("atomic rename", { scopes: ["/home/x/proj"] })[0]!.id;
+    seedSiblingId = index.search("abandoned queue", { scopes: ["/home/x/proj"] })[0]!.id;
+    otherSessionId = index.search("serialize queue", { scopes: ["/home/x/proj"] })[0]!.id;
+    seedSessionId = index
+      .recent({ scopes: ["/home/x/proj"] })
+      .find((row) => row.type === "session" && row.source_session === "seed-1")!.id;
     server = createMcpServer(index);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -107,10 +122,17 @@ describe("MCP server (real client)", () => {
     await rm(base, { recursive: true, force: true });
   });
 
-  it("lists the four tools", async () => {
+  it("lists retrieval and deletion tools", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["explore_memory", "get_memory", "list_recent", "search_memories"]);
+    expect(names).toEqual([
+      "delete_memory",
+      "delete_session",
+      "explore_memory",
+      "get_memory",
+      "list_recent",
+      "search_memories",
+    ]);
   });
 
   it("search_memories finds the seeded memory", async () => {
@@ -209,5 +231,31 @@ describe("MCP server (real client)", () => {
     })) as ToolResponse;
     expect(recent.structuredContent?.status).toBe("empty");
     expect(recent.structuredContent?._hints?.next_steps?.[0]?.arguments.scope).toBe("all");
+  });
+
+  it("deletes memories and sessions only through their matching tools", async () => {
+    const wrong = (await client.callTool({
+      name: "delete_memory",
+      arguments: { id: seedSessionId },
+    })) as ToolResponse;
+    expect(wrong.structuredContent?.status).toBe("wrong_type");
+    expect(wrong.structuredContent?._hints?.next_steps?.[0]?.tool).toBe("delete_session");
+
+    const memory = (await client.callTool({
+      name: "delete_memory",
+      arguments: { id: seedId },
+    })) as ToolResponse;
+    expect(memory.structuredContent?.status).toBe("deleted");
+    expect(index.get(seedId)).toBeNull();
+
+    const session = (await client.callTool({
+      name: "delete_session",
+      arguments: { id: seedSessionId },
+    })) as ToolResponse;
+    expect(session.structuredContent?.status).toBe("deleted");
+    expect(index.get(seedSessionId)).toBeNull();
+    expect(index.get(seedSiblingId)).toBeNull();
+    expect(index.get(otherSessionId)).not.toBeNull();
+    expect(session.structuredContent?.results).toHaveLength(2);
   });
 });

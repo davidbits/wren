@@ -12,8 +12,8 @@ export async function rebuildIndex(cfg: Config): Promise<number> {
     index.clear();
     let n = 0;
     for (const note of await readAllNotes(cfg)) {
-      // Superseded notes are kept on disk for audit but excluded from search.
-      if (note.frontmatter.superseded_by) continue;
+      // Superseded and deleted notes stay on disk for audit but remain inactive.
+      if (note.frontmatter.superseded_by || note.frontmatter.deleted) continue;
       index.upsertNote(note);
       n++;
     }

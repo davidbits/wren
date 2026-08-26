@@ -2,6 +2,7 @@
 import { hashTranscript, parseTranscript } from "./adapters/index.ts";
 import { runCodexHome } from "./commands/codex-home.ts";
 import { consolidate } from "./commands/consolidate.ts";
+import { deleteById } from "./commands/delete.ts";
 import { disableProject, enableProject } from "./commands/enable.ts";
 import { install } from "./commands/install.ts";
 import { status } from "./commands/status.ts";
@@ -15,6 +16,7 @@ import { status } from "./commands/status.ts";
  *   mcp         run the stdio MCP server
  *   rebuild     rebuild the search index from the vault
  *   consolidate prune/supersede near-duplicate learnings
+ *   delete      delete one memory or session note by id
  *   status      show config, projects, queue, index
  *   extract     manually extract one transcript (testing/backfill)
  *   hook        run an agent hook by name (internal: invoked by wiring)
@@ -47,6 +49,7 @@ Commands:
   mcp                             Run the stdio MCP server
   rebuild                         Rebuild the search index from the vault
   consolidate [--dry-run]         Prune/supersede near-duplicate learnings
+  delete <memory|session> <id>    Delete one memory or session note
   codex-home                      Detect codex homes; pick which one to extract from
   status                          Show config, projects, queue, index
   extract <file> [--agent A] [--cwd P] [--scope S]
@@ -187,6 +190,15 @@ async function main(): Promise<void> {
       console.log(
         `Consolidation: ${stats.clusters} cluster(s), ${stats.pruned} pruned${stats.dryRun ? " (dry run)" : ""}.`,
       );
+      break;
+    }
+    case "delete": {
+      const [target, id] = positionals(args);
+      if (target !== "memory" && target !== "session") {
+        return fail("delete: expected <memory|session> <id>");
+      }
+      if (!id) return fail(`delete ${target}: missing <id>`);
+      await deleteById(cfg, target, id);
       break;
     }
     case "codex-home":

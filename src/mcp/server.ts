@@ -6,6 +6,8 @@
  *   - get_memory(id)                          fetch one note + connection menu
  *   - explore_memory(id, relation, ...)       follow one bounded pathway
  *   - list_recent(scope?, limit?)             recently captured memories
+ *   - delete_memory(id)                       delete one non-session note
+ *   - delete_session(id)                      delete one session audit note
  *
  * Register for Claude with:
  *   claude mcp add wren --scope user -- bun run <repo>/src/cli.ts mcp
@@ -16,6 +18,7 @@ import { z } from "zod";
 import { enabledScopeFor, loadConfig, loadProjects } from "../config.ts";
 import type { IndexRow } from "../types.ts";
 import { logger } from "../util/log.ts";
+import { type DeleteTarget, softDeleteById } from "../vault/delete.ts";
 import { type ExplorationRelation, MemoryIndex, type SearchHit } from "../vault/index.ts";
 import { scopesFor } from "../vault/store.ts";
 
@@ -142,6 +145,40 @@ async function resolveScopes(scopeArg: string | undefined): Promise<string[] | u
 
 export function createMcpServer(index: MemoryIndex): McpServer {
   const server = new McpServer({ name: "wren", version: "0.1.0" });
+
+  server.registerTool(
+    "delete_memory",
+    {
+      title: "Delete memory",
+      description:
+        "Soft-delete one non-session memory note by id. The note remains in the vault but is removed from active retrieval.",
+      inputSchema: {
+        id: z.string().describe("Memory id to delete."),
+        scope: z
+          .string()
+          .optional()
+          .describe("'all', or a project path. Defaults to current project + global."),
+      },
+    },
+    async ({ id, scope }) => deleteResponse(index, id, "memory", scope),
+  );
+
+  server.registerTool(
+    "delete_session",
+    {
+      title: "Delete session",
+      description:
+        "Soft-delete one session audit note and every memory extracted from its source session. Notes remain in the vault but are removed from active retrieval.",
+      inputSchema: {
+        id: z.string().describe("Session note id to delete."),
+        scope: z
+          .string()
+          .optional()
+          .describe("'all', or a project path. Defaults to current project + global."),
+      },
+    },
+    async ({ id, scope }) => deleteResponse(index, id, "session", scope),
+  );
 
   server.registerTool(
     "search_memories",
@@ -379,6 +416,50 @@ export function createMcpServer(index: MemoryIndex): McpServer {
   );
 
   return server;
+}
+
+async function deleteResponse(
+  index: MemoryIndex,
+  id: string,
+  target: DeleteTarget,
+  scope: string | undefined,
+) {
+  const cfg = await loadConfig();
+  const scopes = await resolveScopes(scope);
+  const result = await softDeleteById(cfg, index, id, target, { scopes });
+  if (result.status === "not_found") {
+    return text(`No ${target} with id ${id}.`, {
+      status: "not_found",
+      summary: `No ${target} with id ${id}.`,
+      results: [],
+      _hints: hints([], ["Check the id and use the matching delete tool."]),
+    });
+  }
+  if (result.status === "wrong_type") {
+    const tool = result.actualType === "session" ? "delete_session" : "delete_memory";
+    return text(`ID ${id} is ${result.actualType}, not ${target}. Use ${tool}.`, {
+      status: "wrong_type",
+      summary: `ID ${id} is ${result.actualType}, not ${target}.`,
+      results: [],
+      _hints: hints([
+        {
+          tool,
+          arguments: { id },
+          suggestion: `Delete this ${result.actualType} with the matching tool.`,
+        },
+      ]),
+    });
+  }
+  const memoryCount = result.deleted.filter((note) => note.frontmatter.type !== "session").length;
+  const suffix = target === "session" ? ` and ${memoryCount} memory(s)` : "";
+  return text(`Soft-deleted ${target} ${id}${suffix}.`, {
+    status: "deleted",
+    summary: `Soft-deleted ${result.deleted.length} note(s).`,
+    results: result.deleted.map((note) =>
+      resultRecord(MemoryIndex.rowFromNote(note), { deleted: result.deletedAt }),
+    ),
+    _hints: hints(),
+  });
 }
 
 export async function runMcpServer(): Promise<void> {

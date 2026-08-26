@@ -149,6 +149,7 @@ never captures a project you've turned off.
 | `mcp` | Run the stdio MCP server |
 | `rebuild` | Rebuild the search index from the vault |
 | `consolidate [--dry-run]` | Prune/supersede near-duplicate learnings |
+| `delete <memory\|session> <id>` | Soft-delete one memory, or a session and its memories, by id |
 | `codex-home` | Detect Codex homes; choose the fallback used when a hook supplies no transcript path |
 | `status` | Show config, projects, queue, index |
 | `extract <file> [--agent A] [--cwd P] [--scope S]` | Manually extract one transcript (testing/backfill) |
@@ -246,6 +247,11 @@ Every MCP action returns a consistent structured envelope with `status`,
 suggest the next `get_memory` hop. Empty and missing results include recovery
 calls and warnings. `get_memory` also documents optional `query`, `visited`,
 `limit`, and `scope` controls.
+
+`delete_memory` soft-deletes one non-session note by id. `delete_session`
+soft-deletes the audit note plus every memory extracted from that source session.
+Deleted notes remain in the Markdown vault with a `deleted` timestamp, but stay
+out of retrieval and index rebuilds.
 
 Successful jobs and generated notes record extractor provenance. `codex_home`
 records the config/auth home inherited by `codex exec`; `transcript_home`

@@ -73,7 +73,8 @@ export async function consolidate(
 ): Promise<ConsolidateStats> {
   const dryRun = opts.dryRun ?? false;
   const all = (await readAllNotes(cfg)).filter(
-    (n) => n.frontmatter.type !== "session" && !n.frontmatter.superseded_by,
+    (n) =>
+      n.frontmatter.type !== "session" && !n.frontmatter.superseded_by && !n.frontmatter.deleted,
   );
 
   // Group by scope so we never merge across projects.

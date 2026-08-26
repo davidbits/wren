@@ -10,7 +10,7 @@ export async function readLearnings(cfg: Config, scopes: string[]): Promise<Memo
   for (const scope of scopes) {
     for await (const path of walkNotes(learningsDir(cfg, scope))) {
       const note = await readNote(path);
-      if (note) out.push(note);
+      if (note && !note.frontmatter.deleted) out.push(note);
     }
   }
   return out;

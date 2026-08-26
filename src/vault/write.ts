@@ -67,6 +67,10 @@ export async function writeExtraction(
   const hasSession = !!result.session;
   const sessionStem = `session-${shortHash(sessionId || "nosess", 16)}`;
   const sessionPath = join(sessionsDir(cfg, scope), `${sessionStem}.md`);
+  const previousSession = await readNote(sessionPath);
+  if (previousSession?.frontmatter.deleted) {
+    return { written: false, learningPaths: [] };
+  }
 
   const learningPaths: string[] = [];
   const learningStems: string[] = [];
